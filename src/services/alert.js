@@ -2,7 +2,7 @@ const config = require('../config')
 const socketService = require('./socket')
 const persistenceService = require('./persistence')
 const EventEmitter = require('events')
-const { indexes, getIndex } = require('./connections')
+const { indexes, getIndex, debugIndexes } = require('./connections')
 const { getHms, sleep, ago } = require('../helper')
 const webPush = require('web-push')
 
@@ -83,10 +83,14 @@ class AlertService extends EventEmitter {
           activeAlert.user = alert.user
 
           if (typeof alert.newPrice === 'number') {
-            this.moveAlert(activeAlert, {
-              price: alert.newPrice,
-              message: alert.message
-            }, priceOffset)
+            this.moveAlert(
+              activeAlert,
+              {
+                price: alert.newPrice,
+                message: alert.message,
+              },
+              priceOffset
+            )
           } else if (alert.unsubscribe) {
             this.unregisterAlert(activeAlert, index.id)
           }
@@ -152,7 +156,7 @@ class AlertService extends EventEmitter {
 
     this.alertEndpoints[alert.endpoint].timestamp = now
 
-    console.log(`[alert/${alert.user}] create alert ${market} @${alert.price}`)
+    console.log(`[alert/${alert.user}] create alert ${market} @${alert.price} (ajusted to ${alert.price - (priceOffset || 0)})`)
 
     if (alert.message) {
       console.log(`\t 💬 ${alert.message}`)
@@ -230,7 +234,11 @@ class AlertService extends EventEmitter {
     if (index !== -1) {
       this.alerts[activeAlert.market][rangePrice].splice(index, 1)
 
-      console.log(`[alert/${activeAlert.user}] move alert on ${activeAlert.market} @${activeAlert.price} -> ${newAlert.price}`)
+      console.log(
+        `[alert/${activeAlert.user}] move alert on ${activeAlert.market} @${activeAlert.price} -> ${newAlert.price} (ajusted to ${
+          activeAlert.price - (priceOffset || 0)
+        })`
+      )
 
       const now = Date.now()
 
@@ -412,11 +420,13 @@ class AlertService extends EventEmitter {
     }
   }
 
-  sendAlert(alert, market, elapsedTime, direction) {
+  sendAlert(alert, market, timestamp, direction) {
     if (!this.alertEndpoints[alert.endpoint]) {
       console.error(`[alert/send] attempted to send alert without matching endpoint`, alert)
       return
     }
+
+    const elapsedTime = timestamp - alert.timestamp
 
     console.log(
       `[alert/send/${this.alertEndpoints[alert.endpoint].user}] send alert ${market} @${alert.price} (${getHms(elapsedTime)} after)`
@@ -425,11 +435,26 @@ class AlertService extends EventEmitter {
     alert.triggered = true
 
     let message
+    let title
 
     if (alert.message) {
+      if (direction > 0) {
+        title = `${market} 📈`
+      } else if (direction < 0) {
+        title = `${market} 📉`
+      } else {
+        title = market
+      }
       message = alert.message
     } else {
-      message = `Price crossed ${alert.price}`
+      title = market
+      if (direction > 0) {
+        message = `📈 ${alert.price}`
+      } else if (direction < 0) {
+        message = `📉 ${alert.price}`
+      } else {
+        message = `Price crossed ${alert.price}`
+      }
     }
 
     const payload = JSON.stringify({
@@ -459,7 +484,7 @@ class AlertService extends EventEmitter {
         contentEncoding: 'aes128gcm',
       })
       .then(() => {
-        return sleep(1000)
+        return sleep(100)
       })
       .catch((err) => {
         console.error(`[alert/send] failed to send push notification`, err.message)
@@ -497,11 +522,14 @@ class AlertService extends EventEmitter {
         continue
       }
 
-      const isTriggered = alert.priceCompare <= high && alert.priceCompare >= low
+      const isTriggered = alert.priceCompare >= low && alert.priceCompare <= high
 
       if (isTriggered) {
         console.log(`[alert/checkPriceCrossover] ${alert.price} (ajusted to ${alert.priceCompare}) ${market} ${low} <-> ${high}`)
-        await this.sendAlert(alert, market, now - alert.timestamp, direction)
+        if (debugIndexes[market]) {
+          console.log(`debug index ${market}: ${debugIndexes[market].join(',')}`)
+        }
+        await this.sendAlert(alert, market, now, direction)
 
         if (this.unregisterAlert(alert, market, true)) {
           i--

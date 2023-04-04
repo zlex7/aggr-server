@@ -1016,6 +1016,21 @@ class Server extends EventEmitter {
 
     return output
   }
+
+  triggerAlert(user) {
+    for (const market in alertService.alerts) {
+      for (const range in alertService.alerts[market]) {
+        for (const alert of alertService.alerts[market][range]) {
+          if (alertService.alertEndpoints[alert.endpoint] && alertService.alertEndpoints[alert.endpoint].user === user) {
+            alertService.sendAlert(alert, alert.market, Date.now())
+            return `${alert.market} @${alert.price}`
+          }
+        }
+      }
+    }
+
+    throw new Error(`alert not found for user ${user}`)
+  }
 }
 
 module.exports = Server

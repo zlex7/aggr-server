@@ -349,14 +349,16 @@ class InfluxStorage {
       const market = trade.exchange + ':' + trade.pair
       const tradeFlooredTime = Math.floor(trade.timestamp / config.influxTimeframe) * config.influxTimeframe
 
-      if (!ranges[market]) {
-        ranges[market] = {
-          low: trade.price,
-          high: trade.price,
+      if (!trade.liquidation) {
+        if (!ranges[market]) {
+          ranges[market] = {
+            low: trade.price,
+            high: trade.price,
+          }
+        } else {
+          ranges[market].low = Math.min(ranges[market].low, trade.price)
+          ranges[market].high = Math.max(ranges[market].high, trade.price)
         }
-      } else {
-        ranges[market].low = Math.min(ranges[market].low, trade.price)
-        ranges[market].high = Math.max(ranges[market].high, trade.price)
       }
 
       if (!bars[market] || bars[market].time !== tradeFlooredTime) {

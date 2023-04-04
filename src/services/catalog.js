@@ -2,11 +2,13 @@ const axios = require('axios')
 const fs = require('fs')
 const { ensureDirectoryExists } = require('../helper')
 
-const baseQuoteLookupKnown = new RegExp(`^([A-Z0-9]{3,})[-/:_]?(USDT|USDC|TUSD|BUSD|USDD|USDK|USDP)$|^([A-Z0-9]{2,})[-/:]?(UST|EUR|USD)$`)
-const baseQuoteLookupOthers = new RegExp(`^([A-Z0-9]{2,})[-/_]?([A-Z0-9]{3,})$`)
+const stablecoins = ['USDT', 'USDC', 'TUSD', 'BUSD', 'USDD', 'USDK', 'USDP', 'UST']
+const currencies = ['EUR', 'USD', 'GBP', 'AUD', 'CAD', 'CHF']
+const currencyPairLookup = new RegExp(`^([A-Z0-9]{2,})[-/:]?(${currencies.join('|')})$`)
+const stablecoinPairLookup = new RegExp(`^([A-Z0-9]{2,})[-/:_]?(${stablecoins.join('|')})$`)
+const simplePairLookup = new RegExp(`^([A-Z0-9]{2,})[-/_]?([A-Z0-9]{3,})$`)
 
 require('../typedef')
-
 
 module.exports.saveProducts = async function (exchangeId, data) {
   const path = 'products/' + exchangeId + '.json'
@@ -114,13 +116,13 @@ module.exports.fetchProducts = async function (exchangeId, endpoints) {
   return null
 }
 
-const formatStablecoin = module.exports.formatStablecoin = function (pair) {
+const formatStablecoin = (module.exports.formatStablecoin = function (pair) {
   return pair.replace(/(\w{3})?b?usd?[a-z]?$/i, '$1USD')
-}
+})
 
 /**
- * 
- * @param {string} market 
+ *
+ * @param {string} market
  * @returns {Product}
  */
 module.exports.parseMarket = function (market, noStable = true) {
@@ -172,10 +174,7 @@ module.exports.parseMarket = function (market, noStable = true) {
   } else if (exchangeId === 'DERIBIT') {
     localSymbol = localSymbol.replace(/_(\w+)-PERPETUAL/i, '$1')
   } else if (exchangeId === 'BITGET') {
-    localSymbol = localSymbol
-      .replace('USD_DMCBL', 'USD')
-      .replace('PERP_CMCBL', 'USDC')
-      .replace(/_.*/, '')
+    localSymbol = localSymbol.replace('USD_DMCBL', 'USD').replace('PERP_CMCBL', 'USDC').replace(/_.*/, '')
   } else if (exchangeId === 'KUCOIN') {
     localSymbol = localSymbol.replace(/M$/, '')
   }
@@ -190,18 +189,23 @@ module.exports.parseMarket = function (market, noStable = true) {
   let localSymbolAlpha = localSymbol.replace(/[-_/:]/, '')
 
   let match
-
-  match = localSymbol.match(baseQuoteLookupKnown)
-
-  if (!match) {
-    match = localSymbolAlpha.match(baseQuoteLookupOthers)
+  if (exchangeId !== 'BINANCE') {
+    match = localSymbol.match(currencyPairLookup)
   }
 
-  if (!match && (exchangeId === 'DERIBIT' || exchangeId === 'FTX' || exchangeId === 'HUOBI')) {
-    match = localSymbolAlpha.match(/(\w+)[^a-z0-9]/i)
+  if (!match) {
+    match = localSymbol.match(stablecoinPairLookup)
 
-    if (match) {
-      match[2] = match[1]
+    if (!match) {
+      match = localSymbolAlpha.match(simplePairLookup)
+    }
+
+    if (!match && (exchangeId === 'DERIBIT' || exchangeId === 'HUOBI')) {
+      match = localSymbolAlpha.match(/(\w+)[^a-z0-9]/i)
+
+      if (match) {
+        match[2] = match[1]
+      }
     }
   }
 
@@ -231,6 +235,6 @@ module.exports.parseMarket = function (market, noStable = true) {
     pair: symbol,
     local: localSymbolAlpha,
     exchange: exchangeId,
-    type
+    type,
   }
 }
