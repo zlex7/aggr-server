@@ -189,7 +189,7 @@ module.exports.parseMarket = function (market, noStable = true) {
   let localSymbolAlpha = localSymbol.replace(/[-_/:]/, '')
 
   let match
-  if (exchangeId !== 'BINANCE') {
+  if (!/BINANCE/.test(exchangeId)) {
     match = localSymbol.match(currencyPairLookup)
   }
 
